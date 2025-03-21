@@ -1,83 +1,60 @@
-1.8.1 / 2017-09-12
+0.5.4 / 2021-12-10
 ==================
 
-  * perf: replace regular expression with substring
+  * deps: safe-buffer@5.2.1
 
-1.8.0 / 2017-02-18
+0.5.3 / 2018-12-17
 ==================
 
-  * Use SHA1 instead of MD5 for ETag hashing
-    - Improves performance for larger entities
-    - Works with FIPS 140-2 OpenSSL configuration
+  * Use `safe-buffer` for improved Buffer API
 
-1.7.0 / 2015-06-08
+0.5.2 / 2016-12-08
 ==================
 
-  * Always include entity length in ETags for hash length extensions
-  * Generate non-Stats ETags using MD5 only (no longer CRC32)
-  * Improve stat performance by removing hashing
-  * Remove base64 padding in ETags to shorten
-  * Use MD5 instead of MD4 in weak ETags over 1KB
+  * Fix `parse` to accept any linear whitespace character
 
-1.6.0 / 2015-05-10
+0.5.1 / 2016-01-17
 ==================
 
-  * Improve support for JXcore
-  * Remove requirement of `atime` in the stats object
-  * Support "fake" stats objects in environments without `fs`
+  * perf: enable strict mode
 
-1.5.1 / 2014-11-19
+0.5.0 / 2014-10-11
 ==================
 
-  * deps: crc@3.2.1
-    - Minor fixes
+  * Add `parse` function
 
-1.5.0 / 2014-10-14
+0.4.0 / 2014-09-21
 ==================
 
-  * Improve string performance
-  * Slightly improve speed for weak ETags over 1KB
+  * Expand non-Unicode `filename` to the full ISO-8859-1 charset
 
-1.4.0 / 2014-09-21
+0.3.0 / 2014-09-20
 ==================
 
-  * Support "fake" stats objects
-  * Support Node.js 0.6
+  * Add `fallback` option
+  * Add `type` option
 
-1.3.1 / 2014-09-14
+0.2.0 / 2014-09-19
 ==================
 
-  * Use the (new and improved) `crc` for crc32
+  * Reduce ambiguity of file names with hex escape in buggy browsers
 
-1.3.0 / 2014-08-29
+0.1.2 / 2014-09-19
 ==================
 
-  * Default strings to strong ETags
-  * Improve speed for weak ETags over 1KB
+  * Fix periodic invalid Unicode filename header
 
-1.2.1 / 2014-08-29
+0.1.1 / 2014-09-19
 ==================
 
-  * Use the (much faster) `buffer-crc32` for crc32
+  * Fix invalid characters appearing in `filename*` parameter
 
-1.2.0 / 2014-08-24
+0.1.0 / 2014-09-18
 ==================
 
-  * Add support for file stat objects
+  * Make the `filename` argument optional
 
-1.1.0 / 2014-08-24
-==================
-
-  * Add fast-path for empty entity
-  * Add weak ETag generation
-  * Shrink size of generated ETags
-
-1.0.1 / 2014-08-24
-==================
-
-  * Fix behavior of string containing Unicode
-
-1.0.0 / 2014-05-18
+0.0.0 / 2014-09-18
 ==================
 
   * Initial release

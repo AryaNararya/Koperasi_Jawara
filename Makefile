@@ -1,44 +1,50 @@
-#
-# Jake JavaScript build tool
-# Copyright 2112 Matthew Eernisse (mde@fleegix.org)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+# get Makefile directory name: http://stackoverflow.com/a/5982798/376773
+THIS_MAKEFILE_PATH:=$(word $(words $(MAKEFILE_LIST)),$(MAKEFILE_LIST))
+THIS_DIR:=$(shell cd $(dir $(THIS_MAKEFILE_PATH));pwd)
 
-.PHONY: all build install clean uninstall
+# BIN directory
+BIN := $(THIS_DIR)/node_modules/.bin
 
-PREFIX=/usr/local
-DESTDIR=
+# Path
+PATH := node_modules/.bin:$(PATH)
+SHELL := /bin/bash
 
-all: build
+# applications
+NODE ?= $(shell which node)
+YARN ?= $(shell which yarn)
+PKG ?= $(if $(YARN),$(YARN),$(NODE) $(shell which npm))
+BROWSERIFY ?= $(NODE) $(BIN)/browserify
 
-build:
-	@echo 'Jake built.'
+.FORCE:
 
-install:
-	@mkdir -p $(DESTDIR)$(PREFIX)/bin && \
-    mkdir -p $(DESTDIR)$(PREFIX)/lib/node_modules/jake && \
-    mkdir -p ./node_modules && \
-    npm install utilities minimatch && \
-		cp -R ./* $(DESTDIR)$(PREFIX)/lib/node_modules/jake/ && \
-		ln -snf ../lib/node_modules/jake/bin/cli.js $(DESTDIR)$(PREFIX)/bin/jake && \
-		chmod 755 $(DESTDIR)$(PREFIX)/lib/node_modules/jake/bin/cli.js && \
-		echo 'Jake installed.'
+install: node_modules
 
-clean:
-	@true
+node_modules: package.json
+	@NODE_ENV= $(PKG) install
+	@touch node_modules
 
-uninstall:
-	@rm -f $(DESTDIR)$(PREFIX)/bin/jake && \
-		rm -fr $(DESTDIR)$(PREFIX)/lib/node_modules/jake/ && \
-		echo 'Jake uninstalled.'
+lint: .FORCE
+	eslint browser.js debug.js index.js node.js
+
+test-node: .FORCE
+	istanbul cover node_modules/mocha/bin/_mocha -- test/**.js
+
+test-browser: .FORCE
+	mkdir -p dist
+
+	@$(BROWSERIFY) \
+		--standalone debug \
+		. > dist/debug.js
+
+	karma start --single-run
+	rimraf dist
+
+test: .FORCE
+	concurrently \
+		"make test-node" \
+		"make test-browser"
+
+coveralls:
+	cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
+
+.PHONY: all install clean distclean
