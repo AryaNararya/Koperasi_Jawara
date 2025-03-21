@@ -1,51 +1,89 @@
-# ms
+# has-flag [![Build Status](https://travis-ci.org/sindresorhus/has-flag.svg?branch=master)](https://travis-ci.org/sindresorhus/has-flag)
 
-[![Build Status](https://travis-ci.org/zeit/ms.svg?branch=master)](https://travis-ci.org/zeit/ms)
-[![Slack Channel](http://zeit-slackin.now.sh/badge.svg)](https://zeit.chat/)
+> Check if [`argv`](https://nodejs.org/docs/latest/api/process.html#process_process_argv) has a specific flag
 
-Use this package to easily convert various time formats to milliseconds.
+Correctly stops looking after an `--` argument terminator.
 
-## Examples
+---
 
-```js
-ms('2 days')  // 172800000
-ms('1d')      // 86400000
-ms('10h')     // 36000000
-ms('2.5 hrs') // 9000000
-ms('2h')      // 7200000
-ms('1m')      // 60000
-ms('5s')      // 5000
-ms('1y')      // 31557600000
-ms('100')     // 100
+<div align="center">
+	<b>
+		<a href="https://tidelift.com/subscription/pkg/npm-has-flag?utm_source=npm-has-flag&utm_medium=referral&utm_campaign=readme">Get professional support for this package with a Tidelift subscription</a>
+	</b>
+	<br>
+	<sub>
+		Tidelift helps make open source sustainable for maintainers while giving companies<br>assurances about security, maintenance, and licensing for their dependencies.
+	</sub>
+</div>
+
+---
+
+
+## Install
+
+```
+$ npm install has-flag
 ```
 
-### Convert from milliseconds
+
+## Usage
 
 ```js
-ms(60000)             // "1m"
-ms(2 * 60000)         // "2m"
-ms(ms('10 hours'))    // "10h"
+// foo.js
+const hasFlag = require('has-flag');
+
+hasFlag('unicorn');
+//=> true
+
+hasFlag('--unicorn');
+//=> true
+
+hasFlag('f');
+//=> true
+
+hasFlag('-f');
+//=> true
+
+hasFlag('foo=bar');
+//=> true
+
+hasFlag('foo');
+//=> false
+
+hasFlag('rainbow');
+//=> false
 ```
 
-### Time format written-out
-
-```js
-ms(60000, { long: true })             // "1 minute"
-ms(2 * 60000, { long: true })         // "2 minutes"
-ms(ms('10 hours'), { long: true })    // "10 hours"
+```
+$ node foo.js -f --unicorn --foo=bar -- --rainbow
 ```
 
-## Features
 
-- Works both in [node](https://nodejs.org) and in the browser.
-- If a number is supplied to `ms`, a string with a unit is returned.
-- If a string that contains the number is supplied, it returns it as a number (e.g.: it returns `100` for `'100'`).
-- If you pass a string with a number and a valid unit, the number of equivalent ms is returned.
+## API
 
-## Caught a bug?
+### hasFlag(flag, [argv])
 
-1. [Fork](https://help.github.com/articles/fork-a-repo/) this repository to your own GitHub account and then [clone](https://help.github.com/articles/cloning-a-repository/) it to your local device
-2. Link the package to the global module directory: `npm link`
-3. Within the module you want to test your local development instance of ms, just link it to the dependencies: `npm link ms`. Instead of the default one from npm, node will now use your clone of ms!
+Returns a boolean for whether the flag exists.
 
-As always, you can run the tests using: `npm test`
+#### flag
+
+Type: `string`
+
+CLI flag to look for. The `--` prefix is optional.
+
+#### argv
+
+Type: `string[]`<br>
+Default: `process.argv`
+
+CLI arguments.
+
+
+## Security
+
+To report a security vulnerability, please use the [Tidelift security contact](https://tidelift.com/security). Tidelift will coordinate the fix and disclosure.
+
+
+## License
+
+MIT © [Sindre Sorhus](https://sindresorhus.com)

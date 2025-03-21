@@ -1,77 +1,115 @@
-/*
- * Jake JavaScript build tool
- * Copyright 2112 Matthew Eernisse (mde@fleegix.org)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
-*/
+const ROOT_NAMESPACE_NAME = '__rootNamespace__';
 
-const PROJECT_DIR = process.env.PROJECT_DIR;
+class Namespace {
+  constructor(name, parentNamespace) {
+    this.name = name;
+    this.parentNamespace = parentNamespace;
+    this.childNamespaces = {};
+    this.tasks = {};
+    this.rules = {};
+    this.path = this.getPath();
+  }
 
-// Load the jake global
-require(`${PROJECT_DIR}/lib/jake`);
-let { Namespace } = require(`${PROJECT_DIR}/lib/namespace`);
+  get fullName() {
+    return this._getFullName();
+  }
 
-require('./jakefile');
+  addTask(task) {
+    this.tasks[task.name] = task;
+    task.namespace = this;
+  }
 
-let assert = require('assert');
+  resolveTask(name) {
+    if (!name) {
+      return;
+    }
 
-suite('namespace', function () {
+    let taskPath = name.split(':');
+    let taskName = taskPath.pop();
+    let task;
+    let ns;
 
-  this.timeout(7000);
+    // Namespaced, return either relative to current, or from root
+    if (taskPath.length) {
+      taskPath = taskPath.join(':');
+      ns = this.resolveNamespace(taskPath) ||
+        Namespace.ROOT_NAMESPACE.resolveNamespace(taskPath);
+      task = (ns && ns.resolveTask(taskName));
+    }
+    // Bare task, return either local, or top-level
+    else {
+      task = this.tasks[name] || Namespace.ROOT_NAMESPACE.tasks[name];
+    }
 
-  test('resolve namespace by relative name', function () {
-    let aaa, bbb, ccc;
-    aaa = namespace('aaa', function () {
-      bbb = namespace('bbb', function () {
-        ccc = namespace('ccc', function () {
-        });
-      });
-    });
+    return task || null;
+  }
 
-    assert.ok(aaa, Namespace.ROOT_NAMESPACE.resolveNamespace('aaa'));
-    assert.ok(bbb === aaa.resolveNamespace('bbb'));
-    assert.ok(ccc === aaa.resolveNamespace('bbb:ccc'));
-  });
 
-  test('resolve task in sub-namespace by relative path', function () {
-    let curr = Namespace.ROOT_NAMESPACE.resolveNamespace('zooby');
-    let task = curr.resolveTask('frang:w00t:bar');
-    assert.ok(task.action.toString().indexOf('zooby:frang:w00t:bar') > -1);
-  });
+  resolveNamespace(relativeName) {
+    if (!relativeName) {
+      return this;
+    }
 
-  test('prefer local to top-level', function () {
-    let curr = Namespace.ROOT_NAMESPACE.resolveNamespace('zooby:frang:w00t');
-    let task = curr.resolveTask('bar');
-    assert.ok(task.action.toString().indexOf('zooby:frang:w00t:bar') > -1);
-  });
+    let parts = relativeName.split(':');
+    let ns = this;
 
-  test('does resolve top-level', function () {
-    let curr = Namespace.ROOT_NAMESPACE.resolveNamespace('zooby:frang:w00t');
-    let task = curr.resolveTask('foo');
-    assert.ok(task.action.toString().indexOf('top-level foo') > -1);
-  });
+    for (let i = 0, ii = parts.length; (ns && i < ii); i++) {
+      ns = ns.childNamespaces[parts[i]];
+    }
 
-  test('absolute lookup works from sub-namespaces', function () {
-    let curr = Namespace.ROOT_NAMESPACE.resolveNamespace('hurr:durr');
-    let task = curr.resolveTask('zooby:frang:w00t:bar');
-    assert.ok(task.action.toString().indexOf('zooby:frang:w00t:bar') > -1);
-  });
+    return ns || null;
+  }
 
-  test('resolution miss with throw error', function () {
-    let curr = Namespace.ROOT_NAMESPACE;
-    let task = curr.resolveTask('asdf:qwer');
-    assert.ok(!task);
-  });
+  matchRule(relativeName) {
+    let parts = relativeName.split(':');
+    parts.pop();
+    let ns = this.resolveNamespace(parts.join(':'));
+    let rules = ns ? ns.rules : [];
+    let r;
+    let match;
 
-});
+    for (let p in rules) {
+      r = rules[p];
+      if (r.match(relativeName)) {
+        match = r;
+      }
+    }
+
+    return (ns && match) ||
+        (this.parentNamespace &&
+        this.parentNamespace.matchRule(relativeName));
+  }
+
+  getPath() {
+    let parts = [];
+    let next = this.parentNamespace;
+    while (next) {
+      parts.push(next.name);
+      next = next.parentNamespace;
+    }
+    parts.pop(); // Remove '__rootNamespace__'
+    return parts.reverse().join(':');
+  }
+
+  _getFullName() {
+    let path = this.path;
+    path = (path && path.split(':')) || [];
+    path.push(this.name);
+    return path.join(':');
+  }
+
+  isRootNamespace() {
+    return !this.parentNamespace;
+  }
+}
+
+class RootNamespace extends Namespace {
+  constructor() {
+    super(ROOT_NAMESPACE_NAME, null);
+    Namespace.ROOT_NAMESPACE = this;
+  }
+}
+
+module.exports.Namespace = Namespace;
+module.exports.RootNamespace = RootNamespace;
+

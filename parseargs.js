@@ -16,154 +16,119 @@
  *
 */
 
-const PROJECT_DIR = process.env.PROJECT_DIR;
+let parseargs = {};
+let isOpt = function (arg) { return arg.indexOf('-') === 0; };
+let removeOptPrefix = function (opt) { return opt.replace(/^--/, '').replace(/^-/, ''); };
 
-let parseargs = require(`${PROJECT_DIR}/lib/parseargs`);
-let assert = require('assert');
-let optsReg = [
-  { full: 'directory',
-    abbr: 'C',
-    preempts: false,
-    expectValue: true
-  },
-  { full: 'jakefile',
-    abbr: 'f',
-    preempts: false,
-    expectValue: true
-  },
-  { full: 'tasks',
-    abbr: 'T',
-    preempts: true
-  },
-  { full: 'tasks',
-    abbr: 'ls',
-    preempts: true
-  },
-  { full: 'trace',
-    abbr: 't',
-    preempts: false,
-    expectValue: false
-  },
-  { full: 'help',
-    abbr: 'h',
-    preempts: true
-  },
-  { full: 'version',
-    abbr: 'V',
-    preempts: true
-  }
-];
-let p = new parseargs.Parser(optsReg);
-let z = function (s) { return s.split(' '); };
-let res;
+/**
+ * @constructor
+ * Parses a list of command-line args into a key/value object of
+ * options and an array of positional commands.
+ * @ param {Array} opts A list of options in the following format:
+ * [{full: 'foo', abbr: 'f'}, {full: 'bar', abbr: 'b'}]]
+ */
+parseargs.Parser = function (opts) {
+  // A key/value object of matching options parsed out of the args
+  this.opts = {};
+  this.taskNames = null;
+  this.envVars = null;
 
-suite('parseargs', function () {
+  // Data structures used for parsing
+  this.reg = opts;
+  this.shortOpts = {};
+  this.longOpts = {};
 
-  test('long preemptive opt and val with equal-sign, ignore further opts', function () {
-    res = p.parse(z('--tasks=foo --jakefile=asdf'));
-    assert.equal('foo', res.opts.tasks);
-    assert.equal(undefined, res.opts.jakefile);
+  let self = this;
+  [].forEach.call(opts, function (item) {
+    self.shortOpts[item.abbr] = item;
+    self.longOpts[item.full] = item;
   });
+};
 
-  test('long preemptive opt and val without equal-sign, ignore further opts', function () {
-    res = p.parse(z('--tasks foo --jakefile=asdf'));
-    assert.equal('foo', res.opts.tasks);
-    assert.equal(undefined, res.opts.jakefile);
-  });
+parseargs.Parser.prototype = new function () {
 
-  test('long preemptive opt and no val, ignore further opts', function () {
-    res = p.parse(z('--tasks --jakefile=asdf'));
-    assert.equal(true, res.opts.tasks);
-    assert.equal(undefined, res.opts.jakefile);
-  });
+  let _trueOrNextVal = function (argParts, args) {
+    if (argParts[1]) {
+      return argParts[1];
+    }
+    else {
+      return (!args[0] || isOpt(args[0])) ?
+        true : args.shift();
+    }
+  };
 
-  test('preemptive opt with no val, should be true', function () {
-    res = p.parse(z('-T'));
-    assert.equal(true, res.opts.tasks);
-  });
+  /**
+   * Parses an array of arguments into options and positional commands
+   * @param {Array} args The command-line args to parse
+   */
+  this.parse = function (args) {
+    let cmds = [];
+    let cmd;
+    let envVars = {};
+    let opts = {};
+    let arg;
+    let argItem;
+    let argParts;
+    let cmdItems;
+    let taskNames = [];
+    let preempt;
 
-  test('preemptive opt with no val, should be true and ignore further opts', function () {
-    res = p.parse(z('-T -f'));
-    assert.equal(true, res.opts.tasks);
-    assert.equal(undefined, res.opts.jakefile);
-  });
+    while (args.length) {
+      arg = args.shift();
 
-  test('preemptive opt with val, should be val', function () {
-    res = p.parse(z('-T zoobie -f foo/bar/baz'));
-    assert.equal('zoobie', res.opts.tasks);
-    assert.equal(undefined, res.opts.jakefile);
-  });
+      if (isOpt(arg)) {
+        arg = removeOptPrefix(arg);
+        argParts = arg.split('=');
+        argItem = this.longOpts[argParts[0]] || this.shortOpts[argParts[0]];
+        if (argItem) {
+          // First-encountered preemptive opt takes precedence -- no further opts
+          // or possibility of ambiguity, so just look for a value, or set to
+          // true and then bail
+          if (argItem.preempts) {
+            opts[argItem.full] = _trueOrNextVal(argParts, args);
+            preempt = true;
+            break;
+          }
+          // If the opt requires a value, see if we can get a value from the
+          // next arg, or infer true from no-arg -- if it's followed by another
+          // opt, throw an error
+          if (argItem.expectValue || argItem.allowValue) {
+            opts[argItem.full] = _trueOrNextVal(argParts, args);
+            if (argItem.expectValue && !opts[argItem.full]) {
+              throw new Error(argItem.full + ' option expects a value.');
+            }
+          }
+          else {
+            opts[argItem.full] = true;
+          }
+        }
+      }
+      else {
+        cmds.unshift(arg);
+      }
+    }
 
-  test('-f expects a value, -t does not (howdy is task-name)', function () {
-    res = p.parse(z('-f zoobie -t howdy'));
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal(true, res.opts.trace);
-    assert.equal('howdy', res.taskNames[0]);
-  });
+    if (!preempt) {
+      // Parse out any env-vars and task-name
+      while ((cmd = cmds.pop())) {
+        cmdItems = cmd.split('=');
+        if (cmdItems.length > 1) {
+          envVars[cmdItems[0]] = cmdItems[1];
+        }
+        else {
+          taskNames.push(cmd);
+        }
+      }
 
-  test('different order, -f expects a value, -t does not (howdy is task-name)', function () {
-    res = p.parse(z('-f zoobie howdy -t'));
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal(true, res.opts.trace);
-    assert.equal('howdy', res.taskNames[0]);
-  });
+    }
 
-  test('-f expects a value, -t does not (foo=bar is env var)', function () {
-    res = p.parse(z('-f zoobie -t foo=bar'));
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal(true, res.opts.trace);
-    assert.equal('bar', res.envVars.foo);
-    assert.equal(undefined, res.taskNames[0]);
-  });
+    return {
+      opts: opts,
+      envVars: envVars,
+      taskNames: taskNames
+    };
+  };
 
-  test('-f expects a value, -t does not (foo=bar is env-var, task-name follows)', function () {
-    res = p.parse(z('-f zoobie -t howdy foo=bar'));
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal(true, res.opts.trace);
-    assert.equal('bar', res.envVars.foo);
-    assert.equal('howdy', res.taskNames[0]);
-  });
+};
 
-  test('-t does not expect a value, -f does (howdy is task-name)', function () {
-    res = p.parse(z('-t howdy -f zoobie'));
-    assert.equal(true, res.opts.trace);
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal('howdy', res.taskNames[0]);
-  });
-
-  test('--trace does not expect a value, -f does (howdy is task-name)', function () {
-    res = p.parse(z('--trace howdy --jakefile zoobie'));
-    assert.equal(true, res.opts.trace);
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal('howdy', res.taskNames[0]);
-  });
-
-  test('--trace does not expect a value (equal), -f does (throw howdy away)', function () {
-    res = p.parse(z('--trace=howdy --jakefile=zoobie'));
-    assert.equal(true, res.opts.trace);
-    assert.equal('zoobie', res.opts.jakefile);
-    assert.equal(undefined, res.taskNames[0]);
-  });
-
-  /*
-, test('task-name with positional args', function () {
-    res = p.parse(z('foo:bar[asdf,qwer]'));
-    assert.equal('asdf', p.taskArgs[0]);
-    assert.equal('qwer', p.taskArgs[1]);
-  }
-
-, test('opts, env vars, task-name with positional args', function () {
-    res = p.parse(z('-f ./tests/Jakefile -t default[asdf,qwer] foo=bar'));
-    assert.equal('./tests/Jakefile', res.opts.jakefile);
-    assert.equal(true, res.opts.trace);
-    assert.equal('bar', res.envVars.foo);
-    assert.equal('default', res.taskName);
-    assert.equal('asdf', p.taskArgs[0]);
-    assert.equal('qwer', p.taskArgs[1]);
-  }
-*/
-
-
-});
-
-
+module.exports = parseargs;

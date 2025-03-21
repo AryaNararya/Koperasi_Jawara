@@ -1,141 +1,126 @@
-/*
- * Jake JavaScript build tool
- * Copyright 2112 Matthew Eernisse (mde@fleegix.org)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *         http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
-*/
-
-const PROJECT_DIR = process.env.PROJECT_DIR;
-const JAKE_CMD = `${PROJECT_DIR}/bin/cli.js`;
-
-let assert = require('assert');
 let fs = require('fs');
-let exec = require('child_process').execSync;
-let { rmRf } = require(`${PROJECT_DIR}/lib/jake`);
+let Task = require('./task').Task;
 
-let cleanUpAndNext = function (callback) {
-  rmRf('./foo', {
-    silent: true
-  });
-  callback && callback();
-};
+function isFileOrDirectory(t) {
+  return (t instanceof FileTask ||
+          t instanceof DirectoryTask);
+}
 
-suite('fileTask', function () {
-  this.timeout(7000);
+function isFile(t) {
+  return (t instanceof FileTask && !(t instanceof DirectoryTask));
+}
 
-  setup(function () {
-    cleanUpAndNext();
-  });
+/**
+  @name jake
+  @namespace jake
+*/
+/**
+  @name jake.FileTask
+  @class`
+  @extentds Task
+  @description A Jake FileTask
 
-  test('where a file-task prereq does not change with --always-make', function () {
-    let out;
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-src1.txt`).toString().trim();
-    assert.equal('fileTest:foo/src1.txt task\nfileTest:foo/from-src1.txt task',
-      out);
-    out = exec(`${JAKE_CMD} -q -B fileTest:foo/from-src1.txt`).toString().trim();
-    assert.equal('fileTest:foo/src1.txt task\nfileTest:foo/from-src1.txt task',
-      out);
-    cleanUpAndNext();
-  });
+  @param {String} name The name of the Task
+  @param {Array} [prereqs] Prerequisites to be run before this task
+  @param {Function} [action] The action to perform to create this file
+  @param {Object} [opts]
+    @param {Array} [opts.asyc=false] Perform this task asynchronously.
+    If you flag a task with this option, you must call the global
+    `complete` method inside the task's action, for execution to proceed
+    to the next task.
+ */
+class FileTask extends Task {
+  constructor(...args) {
+    super(...args);
+    this.dummy = false;
+    if (fs.existsSync(this.name)) {
+      this.updateModTime();
+    }
+    else {
+      this.modTime = null;
+    }
+  }
 
-  test('concating two files', function () {
-    let out;
-    out = exec(`${JAKE_CMD} -q fileTest:foo/concat.txt`).toString().trim();
-    assert.equal('fileTest:foo/src1.txt task\ndefault task\nfileTest:foo/src2.txt task\n' +
-          'fileTest:foo/concat.txt task', out);
-    // Check to see the two files got concat'd
-    let data = fs.readFileSync(process.cwd() + '/foo/concat.txt');
-    assert.equal('src1src2', data.toString());
-    cleanUpAndNext();
-  });
+  isNeeded() {
+    let prereqs = this.prereqs;
+    let prereqName;
+    let prereqTask;
 
-  test('where a file-task prereq does not change', function () {
-    let out;
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-src1.txt`).toString().trim();
-    assert.equal('fileTest:foo/src1.txt task\nfileTest:foo/from-src1.txt task', out);
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-src1.txt`).toString().trim();
-    // Second time should be a no-op
-    assert.equal('', out);
-    cleanUpAndNext();
-  });
+    // No repeatsies
+    if (this.taskStatus == Task.runStatuses.DONE) {
+      return false;
+    }
+    // The always-make override
+    else if (jake.program.opts['always-make']) {
+      return true;
+    }
+    // Default case
+    else {
 
-  test('where a file-task prereq does change, then does not', function (next) {
-    exec('mkdir -p ./foo');
-    exec('touch ./foo/from-src1.txt');
-    setTimeout(() => {
-      fs.writeFileSync('./foo/src1.txt', '-SRC');
-      // Task should run the first time
-      let out;
-      out = exec(`${JAKE_CMD} -q fileTest:foo/from-src1.txt`).toString().trim();
-      assert.equal('fileTest:foo/from-src1.txt task', out);
-      // Task should not run on subsequent invocation
-      out = exec(`${JAKE_CMD} -q fileTest:foo/from-src1.txt`).toString().trim();
-      assert.equal('', out);
-      cleanUpAndNext(next);
-    }, 1000);
-  });
+      // We need either an existing file, or an action to create one.
+      // First try grabbing the actual mod-time of the file
+      try {
+        this.updateModTime();
+      }
+      // Then fall back to looking for an action
+      catch(e) {
+        if (typeof this.action == 'function') {
+          return true;
+        }
+        else {
+          throw new Error('File-task ' + this.fullName + ' has no ' +
+            'existing file, and no action to create one.');
+        }
+      }
 
-  test('a preexisting file', function () {
-    let prereqData = 'howdy';
-    exec('mkdir -p ./foo');
-    fs.writeFileSync('foo/prereq.txt', prereqData);
-    let out;
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-prereq.txt`).toString().trim();
-    assert.equal('fileTest:foo/from-prereq.txt task', out);
-    let data = fs.readFileSync(process.cwd() + '/foo/from-prereq.txt');
-    assert.equal(prereqData, data.toString());
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-prereq.txt`).toString().trim();
-    // Second time should be a no-op
-    assert.equal('', out);
-    cleanUpAndNext();
-  });
+      // Compare mod-time of all the prereqs with its mod-time
+      // If any prereqs are newer, need to run the action to update
+      if (prereqs && prereqs.length) {
+        for (let i = 0, ii = prereqs.length; i < ii; i++) {
+          prereqName = prereqs[i];
+          prereqTask = this.namespace.resolveTask(prereqName) ||
+            jake.createPlaceholderFileTask(prereqName, this.namespace);
+          // Run the action if:
+          // 1. The prereq is a normal task (not file/dir)
+          // 2. The prereq is a file-task with a mod-date more recent than
+          // the one for this file/dir
+          if (prereqTask) {
+            if (!isFileOrDirectory(prereqTask) ||
+                (isFile(prereqTask) && prereqTask.modTime > this.modTime)) {
+              return true;
+            }
+          }
+        }
+        this.taskStatus = Task.runStatuses.DONE;
+        return false;
+      }
+      // File/dir has no prereqs, and exists -- no need to run
+      else {
+        // Effectively done
+        this.taskStatus = Task.runStatuses.DONE;
+        return false;
+      }
+    }
+  }
 
-  test('a preexisting file with --always-make flag', function () {
-    let prereqData = 'howdy';
-    exec('mkdir -p ./foo');
-    fs.writeFileSync('foo/prereq.txt', prereqData);
-    let out;
-    out = exec(`${JAKE_CMD} -q fileTest:foo/from-prereq.txt`).toString().trim();
-    assert.equal('fileTest:foo/from-prereq.txt task', out);
-    let data = fs.readFileSync(process.cwd() + '/foo/from-prereq.txt');
-    assert.equal(prereqData, data.toString());
-    out = exec(`${JAKE_CMD} -q -B fileTest:foo/from-prereq.txt`).toString().trim();
-    assert.equal('fileTest:foo/from-prereq.txt task', out);
-    cleanUpAndNext();
-  });
+  updateModTime() {
+    let stats = fs.statSync(this.name);
+    this.modTime = stats.mtime;
+  }
 
-  test('nested directory-task', function () {
-    exec(`${JAKE_CMD} -q fileTest:foo/bar/baz/bamf.txt`);
-    let data = fs.readFileSync(process.cwd() + '/foo/bar/baz/bamf.txt');
-    assert.equal('w00t', data);
-    cleanUpAndNext();
-  });
+  complete() {
+    if (!this.dummy) {
+      this.updateModTime();
+    }
+    // Hackity hack
+    Task.prototype.complete.apply(this, arguments);
+  }
 
-  test('partially existing prereqs', function () {
-    /*
-     dependency graph:
-                               /-- foo/output2a.txt --\
-     foo -- foo/output1.txt --+                        +-- output3.txt
-                               \-- foo/output2b.txt --/
-    */
-    // build part of the prereqs
-    exec(`${JAKE_CMD} -q fileTest:foo/output2a.txt`);
-    // verify the final target gets built
-    exec(`${JAKE_CMD} -q fileTest:foo/output3.txt`);
-    let data = fs.readFileSync(process.cwd() + '/foo/output3.txt');
-    assert.equal('w00t', data);
-    cleanUpAndNext();
-  });
-});
+}
+
+exports.FileTask = FileTask;
+
+// DirectoryTask is a subclass of FileTask, depends on it
+// being defined
+let DirectoryTask = require('./directory_task').DirectoryTask;
 
