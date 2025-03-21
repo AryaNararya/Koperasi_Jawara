@@ -1,36 +1,38 @@
 'use strict';
 
 var test = require('tape');
-var gOPD = require('../');
 
-test('gOPD', function (t) {
-	t.test('supported', { skip: !gOPD }, function (st) {
-		st.equal(typeof gOPD, 'function', 'is a function');
+var $Object = require('../');
+var isObject = require('../isObject');
+var ToObject = require('../ToObject');
+var RequireObjectCoercible = require('..//RequireObjectCoercible');
 
-		var obj = { x: 1 };
-		st.ok('x' in obj, 'property exists');
+test('errors', function (t) {
+	t.equal($Object, Object);
+	// @ts-expect-error
+	t['throws'](function () { ToObject(null); }, TypeError);
+	// @ts-expect-error
+	t['throws'](function () { ToObject(undefined); }, TypeError);
+	// @ts-expect-error
+	t['throws'](function () { RequireObjectCoercible(null); }, TypeError);
+	// @ts-expect-error
+	t['throws'](function () { RequireObjectCoercible(undefined); }, TypeError);
 
-		// @ts-expect-error TS can't figure out narrowing from `skip`
-		var desc = gOPD(obj, 'x');
-		st.deepEqual(
-			desc,
-			{
-				configurable: true,
-				enumerable: true,
-				value: 1,
-				writable: true
-			},
-			'descriptor is as expected'
-		);
+	t.deepEqual(RequireObjectCoercible(true), true);
+	t.deepEqual(ToObject(true), Object(true));
+	t.deepEqual(ToObject(42), Object(42));
+	var f = function () {};
+	t.equal(ToObject(f), f);
 
-		st.end();
-	});
+	t.equal(isObject(undefined), false);
+	t.equal(isObject(null), false);
+	t.equal(isObject({}), true);
+	t.equal(isObject([]), true);
+	t.equal(isObject(function () {}), true);
 
-	t.test('not supported', { skip: !!gOPD }, function (st) {
-		st.notOk(gOPD, 'is falsy');
-
-		st.end();
-	});
+	var obj = {};
+	t.equal(RequireObjectCoercible(obj), obj);
+	t.equal(ToObject(obj), obj);
 
 	t.end();
 });
